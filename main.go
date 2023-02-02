@@ -69,11 +69,11 @@ func NewPullCmd() *cobra.Command {
 			cmd.SilenceUsage = true
 
 			ownerFlag, _ := cmd.Flags().GetString("owner")
-			count, repos, err := allOrgRepos(cmd.Context(), ownerFlag)
+			repos, count, err := allOrgRepos(cmd.Context(), ownerFlag)
 			if err != nil {
 				return err
 			}
-			fmt.Fprintln(os.Stderr, termenv.String(" Total org repos:", strconv.Itoa(count)).Foreground(logger.Blue))
+			fmt.Fprintln(os.Stderr, termenv.String("Total org repos:", strconv.Itoa(count)).Foreground(logger.Blue))
 
 			targetDir, _ := cmd.Flags().GetString("target-dir")
 			return pullAllOrgRepos(cmd, repos, targetDir, gh.NewCliClient())
@@ -90,11 +90,11 @@ func NewCloneCmd() *cobra.Command {
 			cmd.SilenceUsage = true
 
 			ownerFlag, _ := cmd.Flags().GetString("owner")
-			count, repos, err := allOrgRepos(cmd.Context(), ownerFlag)
+			repos, count, err := allOrgRepos(cmd.Context(), ownerFlag)
 			if err != nil {
 				return err
 			}
-			fmt.Fprintln(os.Stderr, termenv.String(" Total org repos:", strconv.Itoa(count)).Foreground(logger.Blue))
+			fmt.Fprintln(os.Stderr, termenv.String("Total org repos:", strconv.Itoa(count)).Foreground(logger.Blue))
 
 			targetDir, _ := cmd.Flags().GetString("target-dir")
 			return cloneAllOrgRepos(cmd, repos, targetDir, gh.NewCliClient())
@@ -111,11 +111,10 @@ func NewStatsCmd() *cobra.Command {
 			cmd.SilenceUsage = true
 
 			ownerFlag, _ := cmd.Flags().GetString("owner")
-			count, repos, err := allOrgRepos(cmd.Context(), ownerFlag)
+			repos, _, err := allOrgRepos(cmd.Context(), ownerFlag)
 			if err != nil {
 				return err
 			}
-			fmt.Fprintln(os.Stderr, termenv.String(" Total org repos:", strconv.Itoa(count)).Foreground(logger.Blue))
 			printLanguageStats(repos)
 			return nil
 		},
@@ -123,12 +122,14 @@ func NewStatsCmd() *cobra.Command {
 	return cmd
 }
 
-func allOrgRepos(ctx context.Context, ownerFlag string) (int, <-chan *github.Repository, error) {
+func allOrgRepos(ctx context.Context, ownerFlag string) (<-chan *github.Repository, int, error) {
 	client, err := gh.NewGithubClient(ctx, ownerFlag)
 	if err != nil {
-		return 0, nil, err
+		return nil, 0, err
 	}
-	return client.GetAllOrgRepos()
+	count, repositories, err := client.GetAllOrgRepos()
+	fmt.Fprintln(os.Stderr, termenv.String("Total org repos:", strconv.Itoa(count)).Foreground(logger.Blue))
+	return repositories, count, err
 }
 
 func cloneAllOrgRepos(cmd *cobra.Command, repos <-chan *github.Repository, targetDir string, client *git.Client) error {
