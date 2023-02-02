@@ -28,9 +28,13 @@ type GithubClient struct {
 	c      *git.Client
 }
 
-func NewGithubClient(ctx context.Context, githubAccessToken string, githubOrg string) *GithubClient {
+func NewGithubClient(ctx context.Context, githubOrg string) (*GithubClient, error) {
+	token, err := AttemptReadToken()
+	if err != nil {
+		return nil, err
+	}
 	return &GithubClient{
-		client: InitClient(ctx, githubAccessToken),
+		client: InitClient(ctx, token),
 		ctx:    ctx,
 		org:    githubOrg,
 		c: &git.Client{
@@ -38,6 +42,14 @@ func NewGithubClient(ctx context.Context, githubAccessToken string, githubOrg st
 			Stdin:  os.Stdin,
 			Stdout: os.Stdout,
 		},
+	}, nil
+}
+
+func NewCliClient() *git.Client {
+	return &git.Client{
+		Stderr: os.Stderr,
+		Stdin:  os.Stdin,
+		Stdout: os.Stdout,
 	}
 }
 
