@@ -50,37 +50,14 @@ func main() {
 }
 
 func NewRootCmd() *cobra.Command {
-	var (
-		owner     string
-		targetDir string
-	)
-	var rootCmd = &cobra.Command{
-		Use:           "multirepo",
-		SilenceErrors: true,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			cmd.SilenceUsage = true
-			client, err := gh.NewGithubClient(cmd.Context(), owner)
-			if err != nil {
-				return err
-			}
-			count, repos, err := client.GetAllOrgRepos()
-			if err != nil {
-				return err
-			}
-			fmt.Fprintln(os.Stderr, termenv.String(" Total org repos:", strconv.Itoa(count)).Foreground(logger.Blue))
+	var rootCmd = &cobra.Command{Use: "multirepo"}
 
-			//printLanguageStats(repos)
-			//return cloneAllOrgRepos(cmd, repos, targetDir, ghClient)
-			return pullAllOrgRepos(cmd, repos, targetDir, gh.NewCliClient())
-		},
-	}
+	rootCmd.PersistentFlags().String("owner", "ricardo-ch", "owner of the repo")
+	rootCmd.PersistentFlags().String("target-dir", "/home/ax/project/ricardo-ch-full-org", "target for org checkout")
 
-	rootCmd.PersistentFlags().StringVar(&owner, "owner", "ricardo-ch", "owner of the repo")
-	rootCmd.PersistentFlags().StringVar(&targetDir, "target-dir", "/home/ax/project/ricardo-ch-full-org", "target for org checkout")
 	rootCmd.AddCommand(NewPullCmd())
 	rootCmd.AddCommand(NewCloneCmd())
 	rootCmd.AddCommand(NewStatsCmd())
-
 	return rootCmd
 }
 
