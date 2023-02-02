@@ -1,12 +1,14 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"os"
 	"os/signal"
 	"sort"
 	"strconv"
+	"strings"
 
 	"github.com/cli/cli/v2/git"
 	"github.com/golonzovsky/github-multirepo/internal/gh"
@@ -176,11 +178,19 @@ func pullAllOrgRepos(cmd *cobra.Command, repos <-chan *github.Repository, target
 		g.Go(func() error {
 			for repo := range repos {
 				targetLoc := targetDir + "/" + *repo.Name
-				fmt.Fprintln(os.Stderr, termenv.String("Pulling", *repo.Name, "in", targetLoc).Foreground(logger.Green))
+				msg := fmt.Sprintf("Pulling %35s in %s", *repo.Name, targetLoc)
+				fmt.Fprintln(os.Stderr, termenv.String(msg).Foreground(logger.Green))
 				branch := *repo.DefaultBranch
 				url := *repo.CloneURL
-				if err := client.Pull(cmd.Context(), url, branch, git.WithRepoDir(targetLoc)); err != nil {
-					return err
+				stderr := &bytes.Buffer{}
+				stdout := &bytes.Buffer{}
+				if err := client.Pull(cmd.Context(), url, branch,
+					git.WithRepoDir(targetLoc), git.WithStderr(stderr), git.WithStdout(stdout)); err != nil {
+					return fmt.Errorf("failed to pull %s: %w, with message: %s", *repo.Name, err, stderr.String())
+				}
+				out := stdout.String()
+				if !strings.HasPrefix(out, "Already up to date.") {
+					fmt.Print(out)
 				}
 			}
 			return nil
