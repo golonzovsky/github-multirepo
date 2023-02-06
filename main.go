@@ -69,11 +69,10 @@ func NewPullCmd() *cobra.Command {
 			cmd.SilenceUsage = true
 
 			ownerFlag, _ := cmd.Flags().GetString("owner")
-			repos, count, err := allOrgRepos(cmd.Context(), ownerFlag)
+			repos, _, err := allOrgRepos(cmd.Context(), ownerFlag)
 			if err != nil {
 				return err
 			}
-			fmt.Fprintln(os.Stderr, termenv.String("Total org repos:", strconv.Itoa(count)).Foreground(logger.Blue))
 
 			targetDir, _ := cmd.Flags().GetString("target-dir")
 			return pullAllOrgRepos(cmd, repos, targetDir, gh.NewCliClient())
@@ -163,7 +162,7 @@ func pullAllOrgRepos(cmd *cobra.Command, repos <-chan *github.Repository, target
 				stderr := &bytes.Buffer{}
 				stdout := &bytes.Buffer{}
 				if err := client.Pull(cmd.Context(), url, branch,
-					git.WithRepoDir(targetLoc), git.WithStderr(stderr), git.WithStdout(stdout)); err != nil {
+					git.WithRepoDir(targetLoc), git.WithStderr(stderr), git.WithStdout(stdout), withForceGitColors()); err != nil {
 					return fmt.Errorf("failed to pull %s: %w, with message: %s", *repo.Name, err, stderr.String())
 				}
 				out := stdout.String()
@@ -175,6 +174,13 @@ func pullAllOrgRepos(cmd *cobra.Command, repos <-chan *github.Repository, target
 		})
 	}
 	return g.Wait()
+}
+
+func withForceGitColors() git.CommandModifier {
+	return func(gc *git.Command) {
+		// add -c after git executable (first index)
+		gc.Args = append([]string{gc.Args[0], "-c", "color.ui=always"}, gc.Args[1:]...)
+	}
 }
 
 func printLanguageStats(repos <-chan *github.Repository) {

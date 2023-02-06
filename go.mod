@@ -1,13 +1,12 @@
 module github.com/golonzovsky/github-multirepo
 
-go 1.19
+go 1.20
 
 require (
 	github.com/google/go-github/v45 v45.2.0
 	github.com/muesli/termenv v0.13.0
 	github.com/spf13/cobra v1.6.1
 	golang.org/x/oauth2 v0.0.0-20220309155454-6242fa91716a
-	gopkg.in/yaml.v3 v3.0.1
 
 )
 
@@ -38,6 +37,6 @@ require (
 	golang.org/x/crypto v0.0.0-20210921155107-089bfa567519 // indirect
 	golang.org/x/net v0.0.0-20220923203811-8be639271d50 // indirect
 	golang.org/x/sync v0.1.0
-	golang.org/x/sys v0.0.0-20220811171246-fbc7d0a398ab // indirect
+	golang.org/x/sys v0.1.0 // indirect
 	google.golang.org/appengine v1.6.7 // indirect
 )
