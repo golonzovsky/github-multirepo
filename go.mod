@@ -3,11 +3,17 @@ module github.com/golonzovsky/github-multirepo
 go 1.20
 
 require (
+	github.com/charmbracelet/log v0.1.0
 	github.com/google/go-github/v45 v45.2.0
-	github.com/muesli/termenv v0.13.0
 	github.com/spf13/cobra v1.6.1
 	golang.org/x/oauth2 v0.0.0-20220309155454-6242fa91716a
 
+)
+
+require (
+	github.com/charmbracelet/lipgloss v0.6.0 // indirect
+	github.com/go-logfmt/logfmt v0.6.0 // indirect
+	github.com/muesli/termenv v0.13.0 // indirect
 )
 
 require (

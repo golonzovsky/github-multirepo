@@ -10,11 +10,10 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/charmbracelet/log"
 	"github.com/cli/cli/v2/git"
 	"github.com/golonzovsky/github-multirepo/internal/gh"
-	"github.com/golonzovsky/github-multirepo/internal/logger"
 	"github.com/google/go-github/v45/github"
-	"github.com/muesli/termenv"
 	"github.com/spf13/cobra"
 	"golang.org/x/sync/errgroup"
 )
@@ -93,7 +92,7 @@ func NewCloneCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			fmt.Fprintln(os.Stderr, termenv.String("Total org repos:", strconv.Itoa(count)).Foreground(logger.Blue))
+			log.Info("Total org repos:", "count", strconv.Itoa(count))
 
 			targetDir, _ := cmd.Flags().GetString("target-dir")
 			return cloneAllOrgRepos(cmd, repos, targetDir, gh.NewCliClient())
@@ -127,7 +126,7 @@ func allOrgRepos(ctx context.Context, ownerFlag string) (<-chan *github.Reposito
 		return nil, 0, err
 	}
 	count, repositories, err := client.GetAllOrgRepos()
-	fmt.Fprintln(os.Stderr, termenv.String("Total org repos:", strconv.Itoa(count)).Foreground(logger.Blue))
+	log.Info("Total org repos:", "count", strconv.Itoa(count))
 	return repositories, count, err
 }
 
@@ -137,7 +136,7 @@ func cloneAllOrgRepos(cmd *cobra.Command, repos <-chan *github.Repository, targe
 		g.Go(func() error {
 			for repo := range repos {
 				targetLoc := targetDir + "/" + *repo.Name
-				fmt.Fprintln(os.Stderr, termenv.String("Cloning", *repo.Name, "to", targetLoc).Foreground(logger.Green))
+				log.Info("Cloning", "repo", *repo.Name, "to", targetLoc)
 
 				if _, err := client.Clone(cmd.Context(), *repo.CloneURL, []string{targetLoc}); err != nil {
 					return err
@@ -155,8 +154,7 @@ func pullAllOrgRepos(cmd *cobra.Command, repos <-chan *github.Repository, target
 		g.Go(func() error {
 			for repo := range repos {
 				targetLoc := targetDir + "/" + *repo.Name
-				msg := fmt.Sprintf("Pulling %35s in %s", *repo.Name, targetLoc)
-				fmt.Fprintln(os.Stderr, termenv.String(msg).Foreground(logger.Green))
+				log.Info(fmt.Sprintf("Pulling %35s in %s", *repo.Name, targetLoc))
 				branch := *repo.DefaultBranch
 				url := *repo.CloneURL
 				stderr := &bytes.Buffer{}
@@ -190,7 +188,7 @@ func printLanguageStats(repos <-chan *github.Repository) {
 			continue
 		}
 		counts[*repo.Language]++
-		fmt.Fprintln(os.Stderr, termenv.String(*repo.Name, "is", *repo.Language).Foreground(logger.Green))
+		log.Info(*repo.Name + " is in " + *repo.Language)
 	}
 	keys := make([]string, 0, len(counts))
 	for key := range counts {
@@ -198,6 +196,6 @@ func printLanguageStats(repos <-chan *github.Repository) {
 	}
 	sort.Slice(keys, func(i, j int) bool { return counts[keys[i]] > counts[keys[j]] })
 	for _, k := range keys {
-		fmt.Fprintln(os.Stderr, termenv.String(k, ":", strconv.Itoa(counts[k])).Foreground(logger.Blue))
+		log.Info(k + ":" + strconv.Itoa(counts[k]))
 	}
 }

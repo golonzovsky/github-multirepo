@@ -2,13 +2,11 @@ package gh
 
 import (
 	"context"
-	"fmt"
 	"os"
 
+	"github.com/charmbracelet/log"
 	"github.com/cli/cli/v2/git"
-	"github.com/golonzovsky/github-multirepo/internal/logger"
 	"github.com/google/go-github/v45/github"
-	"github.com/muesli/termenv"
 	"golang.org/x/oauth2"
 	"golang.org/x/sync/errgroup"
 )
@@ -86,7 +84,7 @@ func (gc GithubClient) GetAllOrgRepos() (int, <-chan *github.Repository, error) 
 	go func() {
 		err := g.Wait()
 		if err != nil && err != context.Canceled {
-			fmt.Fprintln(os.Stderr, termenv.String("error fetching org repos: ").Foreground(logger.Red).Bold(), err)
+			log.Error("error fetching org repos:", "err", err)
 		}
 		close(repos)
 	}()
