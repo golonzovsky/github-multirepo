@@ -23,6 +23,9 @@ var (
 )
 
 func main() {
+	log.SetLevel(log.DebugLevel)
+	errLogger := log.New(log.WithOutput(os.Stderr))
+
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt)
 	defer func() { signal.Stop(c) }()
@@ -36,13 +39,13 @@ func main() {
 		case <-ctx.Done():
 		}
 		<-c // second signal, hard exit
-		fmt.Fprintln(os.Stderr, "second interrupt, exiting")
+		errLogger.Warn("second interrupt, exiting")
 		os.Exit(1)
 	}()
 
 	if err := NewRootCmd().ExecuteContext(ctx); err != nil {
 		if err != context.Canceled {
-			fmt.Fprintln(os.Stderr, err)
+			errLogger.Error(os.Stderr, err)
 		}
 		os.Exit(1)
 	}
@@ -88,12 +91,10 @@ func NewCloneCmd() *cobra.Command {
 			cmd.SilenceUsage = true
 
 			ownerFlag, _ := cmd.Flags().GetString("owner")
-			repos, count, err := allOrgRepos(cmd.Context(), ownerFlag)
+			repos, _, err := allOrgRepos(cmd.Context(), ownerFlag)
 			if err != nil {
 				return err
 			}
-			log.Info("Total org repos:", "count", strconv.Itoa(count))
-
 			targetDir, _ := cmd.Flags().GetString("target-dir")
 			return cloneAllOrgRepos(cmd, repos, targetDir, gh.NewCliClient())
 		},
@@ -138,7 +139,17 @@ func cloneAllOrgRepos(cmd *cobra.Command, repos <-chan *github.Repository, targe
 				targetLoc := targetDir + "/" + *repo.Name
 				log.Info("Cloning", "repo", *repo.Name, "to", targetLoc)
 
-				if _, err := client.Clone(cmd.Context(), *repo.CloneURL, []string{targetLoc}); err != nil {
+				cmd, err := client.AuthenticatedCommand(cmd.Context(), "clone", *repo.CloneURL, targetLoc)
+				if err != nil {
+					return err
+				}
+				stdErr := &bytes.Buffer{}
+				cmd.Stderr = stdErr
+				if err := cmd.Run(); err != nil {
+					if strings.Contains(stdErr.String(), "already exists and is not an empty directory") {
+						log.Debug("Repo already exists, skipping", "repo", *repo.Name)
+						continue
+					}
 					return err
 				}
 			}
@@ -153,6 +164,10 @@ func pullAllOrgRepos(cmd *cobra.Command, repos <-chan *github.Repository, target
 	for i := 0; i < parallelWorkers; i++ {
 		g.Go(func() error {
 			for repo := range repos {
+				if repo.Archived != nil && *repo.Archived {
+					log.Debug("Repo is archived, skipping", "repo", *repo.Name)
+					continue
+				}
 				targetLoc := targetDir + "/" + *repo.Name
 				log.Info(fmt.Sprintf("Pulling %35s in %s", *repo.Name, targetLoc))
 				branch := *repo.DefaultBranch
@@ -161,7 +176,12 @@ func pullAllOrgRepos(cmd *cobra.Command, repos <-chan *github.Repository, target
 				stdout := &bytes.Buffer{}
 				if err := client.Pull(cmd.Context(), url, branch,
 					git.WithRepoDir(targetLoc), git.WithStderr(stderr), git.WithStdout(stdout), withForceGitColors()); err != nil {
-					return fmt.Errorf("failed to pull %s: %w, with message: %s", *repo.Name, err, stderr.String())
+					errorMsg := stderr.String()
+					if strings.Contains(errorMsg, "couldn't find remote ref") {
+						log.Warn("No default branch found, skipping", "repo", *repo.Name)
+						continue
+					}
+					return fmt.Errorf("failed to pull %s: %w, with message: %s", *repo.Name, err, errorMsg)
 				}
 				out := stdout.String()
 				if !strings.HasPrefix(out, "Already up to date.") {
