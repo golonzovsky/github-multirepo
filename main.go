@@ -24,7 +24,7 @@ var (
 
 func main() {
 	log.SetLevel(log.DebugLevel)
-	errLogger := log.New(log.WithOutput(os.Stderr))
+	errLogger := log.New(os.Stderr)
 
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt)
@@ -63,6 +63,7 @@ func NewRootCmd() *cobra.Command {
 	return rootCmd
 }
 
+// todo this should pull from the current folder and not from the target dir
 func NewPullCmd() *cobra.Command {
 	var cmd = &cobra.Command{
 		Use:           "pull",
@@ -85,17 +86,21 @@ func NewPullCmd() *cobra.Command {
 
 func NewCloneCmd() *cobra.Command {
 	var cmd = &cobra.Command{
-		Use:           "clone",
+		Use:           "clone [github-org]",
 		SilenceErrors: true,
+		Args:          cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cmd.SilenceUsage = true
 
-			ownerFlag, _ := cmd.Flags().GetString("owner")
-			repos, _, err := allOrgRepos(cmd.Context(), ownerFlag)
+			repos, _, err := allOrgRepos(cmd.Context(), args[0])
 			if err != nil {
 				return err
 			}
-			targetDir, _ := cmd.Flags().GetString("target-dir")
+
+			targetDir, err := cmd.Flags().GetString("target-dir")
+			if err != nil {
+				return fmt.Errorf("target-dir flag is required")
+			}
 			return cloneAllOrgRepos(cmd, repos, targetDir, gh.NewCliClient())
 		},
 	}
@@ -121,12 +126,12 @@ func NewStatsCmd() *cobra.Command {
 	return cmd
 }
 
-func allOrgRepos(ctx context.Context, ownerFlag string) (<-chan *github.Repository, int, error) {
-	client, err := gh.NewGithubClient(ctx, ownerFlag)
+func allOrgRepos(ctx context.Context, owner string) (<-chan *github.Repository, int, error) {
+	client, err := gh.NewGithubClient(ctx, owner)
 	if err != nil {
 		return nil, 0, err
 	}
-	count, repositories, err := client.GetAllOrgRepos()
+	count, repositories, err := client.GetAllRepos()
 	log.Info("Total org repos:", "count", strconv.Itoa(count))
 	return repositories, count, err
 }

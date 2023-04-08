@@ -20,10 +20,11 @@ func InitClient(ctx context.Context, githubAccessToken string) *github.Client {
 }
 
 type GithubClient struct {
-	client *github.Client
-	ctx    context.Context
-	org    string
-	c      *git.Client
+	ctx   context.Context
+	owner string
+
+	ghApiClient    *github.Client
+	ghCliGitClient *git.Client
 }
 
 func NewGithubClient(ctx context.Context, githubOrg string) (*GithubClient, error) {
@@ -32,14 +33,10 @@ func NewGithubClient(ctx context.Context, githubOrg string) (*GithubClient, erro
 		return nil, err
 	}
 	return &GithubClient{
-		client: InitClient(ctx, token),
-		ctx:    ctx,
-		org:    githubOrg,
-		c: &git.Client{
-			Stderr: os.Stderr,
-			Stdin:  os.Stdin,
-			Stdout: os.Stdout,
-		},
+		ctx:            ctx,
+		owner:          githubOrg,
+		ghApiClient:    InitClient(ctx, token),
+		ghCliGitClient: NewCliClient(),
 	}, nil
 }
 
@@ -51,8 +48,8 @@ func NewCliClient() *git.Client {
 	}
 }
 
-func (gc GithubClient) GetAllOrgRepos() (int, <-chan *github.Repository, error) {
-	org, _, err := gc.client.Organizations.Get(gc.ctx, gc.org)
+func (gc GithubClient) GetAllRepos() (int, <-chan *github.Repository, error) {
+	org, _, err := gc.ghApiClient.Organizations.Get(gc.ctx, gc.owner)
 	if err != nil {
 		return 0, nil, err
 	}
@@ -69,7 +66,7 @@ func (gc GithubClient) GetAllOrgRepos() (int, <-chan *github.Repository, error) 
 				ListOptions: github.ListOptions{Page: page, PerPage: perPage},
 				Type:        "all",
 			}
-			repoPage, _, err := gc.client.Repositories.ListByOrg(gc.ctx, gc.org, opt)
+			repoPage, _, err := gc.ghApiClient.Repositories.ListByOrg(gc.ctx, gc.owner, opt)
 			if err != nil {
 				return err
 			}
@@ -92,6 +89,6 @@ func (gc GithubClient) GetAllOrgRepos() (int, <-chan *github.Repository, error) 
 }
 
 func (gc GithubClient) Clone(url string, targetLocation string) error {
-	_, err := gc.c.Clone(gc.ctx, url, []string{targetLocation})
+	_, err := gc.ghCliGitClient.Clone(gc.ctx, url, []string{targetLocation})
 	return err
 }
