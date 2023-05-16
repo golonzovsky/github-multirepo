@@ -36,11 +36,11 @@ func NewGithubClient(ctx context.Context, githubOrg string) (*GithubClient, erro
 		ctx:            ctx,
 		owner:          githubOrg,
 		ghApiClient:    InitClient(ctx, token),
-		ghCliGitClient: NewCliClient(),
+		ghCliGitClient: NewGithubCliClient(),
 	}, nil
 }
 
-func NewCliClient() *git.Client {
+func NewGithubCliClient() *git.Client {
 	return &git.Client{
 		Stderr: os.Stderr,
 		Stdin:  os.Stdin,

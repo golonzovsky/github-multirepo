@@ -5,7 +5,9 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"os/signal"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -60,10 +62,11 @@ func NewRootCmd() *cobra.Command {
 	rootCmd.AddCommand(NewPullCmd())
 	rootCmd.AddCommand(NewCloneCmd())
 	rootCmd.AddCommand(NewStatsCmd())
+	rootCmd.AddCommand(NewPullFolderCmd())
 	return rootCmd
 }
 
-// todo this should pull from the current folder and not from the target dir
+// todo this should pull from the current folder and not from the target dir with owner flag
 func NewPullCmd() *cobra.Command {
 	var cmd = &cobra.Command{
 		Use:           "pull",
@@ -78,7 +81,39 @@ func NewPullCmd() *cobra.Command {
 			}
 
 			targetDir, _ := cmd.Flags().GetString("target-dir")
-			return pullAllOrgRepos(cmd, repos, targetDir, gh.NewCliClient())
+			return pullAllOrgRepos(cmd.Context(), repos, targetDir, gh.NewGithubCliClient())
+		},
+	}
+	return cmd
+}
+
+func NewPullFolderCmd() *cobra.Command {
+	var cmd = &cobra.Command{
+		Use:           "pull-folder",
+		SilenceErrors: true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cmd.SilenceUsage = true
+			ctx := cmd.Context()
+			dir, err := os.Getwd()
+			if err != nil {
+				return err
+			}
+
+			dirs, err := getFolderRepos(ctx, dir)
+			if err != nil {
+				return err
+			}
+
+			githubCliClient := gh.NewGithubCliClient()
+
+			for _, repoDir := range dirs {
+				fullDir := filepath.Join(dir, repoDir)
+				err := pullRepo(ctx, githubCliClient, repoDir, "", "", fullDir)
+				if err != nil {
+					return err
+				}
+			}
+			return nil
 		},
 	}
 	return cmd
@@ -101,7 +136,7 @@ func NewCloneCmd() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("target-dir flag is required")
 			}
-			return cloneAllOrgRepos(cmd, repos, targetDir, gh.NewCliClient())
+			return cloneAllOrgRepos(cmd, repos, targetDir, gh.NewGithubCliClient())
 		},
 	}
 	return cmd
@@ -124,6 +159,28 @@ func NewStatsCmd() *cobra.Command {
 		},
 	}
 	return cmd
+}
+
+func getFolderRepos(ctx context.Context, dir string) ([]string, error) {
+	dirEntries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, err
+	}
+	var dirs []string
+	for _, dirEntry := range dirEntries {
+		fullPath := filepath.Join(dir, dirEntry.Name())
+		if dirEntry.IsDir() && isGitRepo(ctx, fullPath) {
+			dirs = append(dirs, dirEntry.Name())
+		}
+	}
+	return dirs, nil
+}
+
+func isGitRepo(ctx context.Context, dir string) bool {
+	cmd := exec.CommandContext(ctx, "git", "rev-parse", "--is-inside-work-tree")
+	cmd.Dir = dir
+	err := cmd.Run()
+	return err == nil
 }
 
 func allOrgRepos(ctx context.Context, owner string) (<-chan *github.Repository, int, error) {
@@ -164,8 +221,8 @@ func cloneAllOrgRepos(cmd *cobra.Command, repos <-chan *github.Repository, targe
 	return g.Wait()
 }
 
-func pullAllOrgRepos(cmd *cobra.Command, repos <-chan *github.Repository, targetDir string, client *git.Client) error {
-	g, _ := errgroup.WithContext(cmd.Context())
+func pullAllOrgRepos(ctx context.Context, repos <-chan *github.Repository, targetDir string, client *git.Client) error {
+	g, _ := errgroup.WithContext(ctx)
 	for i := 0; i < parallelWorkers; i++ {
 		g.Go(func() error {
 			for repo := range repos {
@@ -173,30 +230,35 @@ func pullAllOrgRepos(cmd *cobra.Command, repos <-chan *github.Repository, target
 					log.Debug("Repo is archived, skipping", "repo", *repo.Name)
 					continue
 				}
-				targetLoc := targetDir + "/" + *repo.Name
-				log.Info(fmt.Sprintf("Pulling %35s in %s", *repo.Name, targetLoc))
-				branch := *repo.DefaultBranch
-				url := *repo.CloneURL
-				stderr := &bytes.Buffer{}
-				stdout := &bytes.Buffer{}
-				if err := client.Pull(cmd.Context(), url, branch,
-					git.WithRepoDir(targetLoc), git.WithStderr(stderr), git.WithStdout(stdout), withForceGitColors()); err != nil {
-					errorMsg := stderr.String()
-					if strings.Contains(errorMsg, "couldn't find remote ref") {
-						log.Warn("No default branch found, skipping", "repo", *repo.Name)
-						continue
-					}
-					return fmt.Errorf("failed to pull %s: %w, with message: %s", *repo.Name, err, errorMsg)
-				}
-				out := stdout.String()
-				if !strings.HasPrefix(out, "Already up to date.") {
-					fmt.Print(out)
+				err := pullRepo(ctx, client, *repo.Name, *repo.DefaultBranch, *repo.CloneURL, targetDir+"/"+*repo.Name)
+				if err != nil {
+					return err
 				}
 			}
 			return nil
 		})
 	}
 	return g.Wait()
+}
+
+func pullRepo(ctx context.Context, client *git.Client, repoName string, branch string, url string, targetFolder string) error {
+	log.Info(fmt.Sprintf("Pulling %35s in %s", repoName, targetFolder))
+	stderr := &bytes.Buffer{}
+	stdout := &bytes.Buffer{}
+	if err := client.Pull(ctx, url, branch,
+		git.WithRepoDir(targetFolder), git.WithStderr(stderr), git.WithStdout(stdout), withForceGitColors()); err != nil {
+		errorMsg := stderr.String()
+		if strings.Contains(errorMsg, "couldn't find remote ref") {
+			log.Warn("No default branch found, skipping", "repo", repoName)
+			return nil
+		}
+		return fmt.Errorf("failed to pull %s: %w, with message: %s", repoName, err, errorMsg)
+	}
+	out := stdout.String()
+	if !strings.HasPrefix(out, "Already up to date.") {
+		fmt.Print(out)
+	}
+	return nil
 }
 
 func withForceGitColors() git.CommandModifier {
