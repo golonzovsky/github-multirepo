@@ -20,23 +20,21 @@ func InitClient(ctx context.Context, githubAccessToken string) *github.Client {
 }
 
 type GithubClient struct {
-	ctx   context.Context
 	owner string
 
-	ghApiClient    *github.Client
-	ghCliGitClient *git.Client
+	ghApiClient *github.Client
+	ghCliClient *git.Client
 }
 
 func NewGithubClient(ctx context.Context, githubOrg string) (*GithubClient, error) {
-	token, err := AttemptReadToken()
+	token, err := GetGhToken()
 	if err != nil {
 		return nil, err
 	}
 	return &GithubClient{
-		ctx:            ctx,
-		owner:          githubOrg,
-		ghApiClient:    InitClient(ctx, token),
-		ghCliGitClient: NewGithubCliClient(),
+		owner:       githubOrg,
+		ghApiClient: InitClient(ctx, token),
+		ghCliClient: NewGithubCliClient(),
 	}, nil
 }
 
@@ -48,8 +46,8 @@ func NewGithubCliClient() *git.Client {
 	}
 }
 
-func (gc GithubClient) GetAllRepos() (int, <-chan *github.Repository, error) {
-	org, _, err := gc.ghApiClient.Organizations.Get(gc.ctx, gc.owner)
+func (gc GithubClient) GetAllRepos(ctx context.Context) (int, <-chan *github.Repository, error) {
+	org, _, err := gc.ghApiClient.Organizations.Get(ctx, gc.owner)
 	if err != nil {
 		return 0, nil, err
 	}
@@ -58,7 +56,7 @@ func (gc GithubClient) GetAllRepos() (int, <-chan *github.Repository, error) {
 	totalRepos := *org.OwnedPrivateRepos + *org.PublicRepos
 	numPages := (totalRepos + perPage - 1) / perPage
 	repos := make(chan *github.Repository)
-	g, _ := errgroup.WithContext(gc.ctx)
+	g, _ := errgroup.WithContext(ctx)
 	for p := 1; p <= numPages; p++ {
 		page := p
 		g.Go(func() error {
@@ -66,7 +64,7 @@ func (gc GithubClient) GetAllRepos() (int, <-chan *github.Repository, error) {
 				ListOptions: github.ListOptions{Page: page, PerPage: perPage},
 				Type:        "all",
 			}
-			repoPage, _, err := gc.ghApiClient.Repositories.ListByOrg(gc.ctx, gc.owner, opt)
+			repoPage, _, err := gc.ghApiClient.Repositories.ListByOrg(ctx, gc.owner, opt)
 			if err != nil {
 				return err
 			}
@@ -88,7 +86,7 @@ func (gc GithubClient) GetAllRepos() (int, <-chan *github.Repository, error) {
 	return totalRepos, repos, nil
 }
 
-func (gc GithubClient) Clone(url string, targetLocation string) error {
-	_, err := gc.ghCliGitClient.Clone(gc.ctx, url, []string{targetLocation})
+func (gc GithubClient) Clone(ctx context.Context, url string, targetLocation string) error {
+	_, err := gc.ghCliClient.Clone(ctx, url, []string{targetLocation})
 	return err
 }
