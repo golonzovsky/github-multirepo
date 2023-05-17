@@ -13,8 +13,8 @@ import (
 
 	"github.com/charmbracelet/log"
 	"github.com/cli/cli/v2/git"
-	"github.com/golonzovsky/github-multirepo/internal/cliclient"
-	"github.com/golonzovsky/github-multirepo/internal/gh"
+	"github.com/golonzovsky/github-multirepo/internal/ghapi"
+	"github.com/golonzovsky/github-multirepo/internal/ghcli"
 	"github.com/golonzovsky/github-multirepo/internal/gitrepo"
 	"github.com/google/go-github/v45/github"
 	"github.com/spf13/cobra"
@@ -76,13 +76,18 @@ func NewPullOrgCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cmd.SilenceUsage = true
 
-			repos, _, err := allOrgRepos(cmd.Context(), args[0])
+			client, err := ghapi.NewGithubClient(cmd.Context(), args[0])
+			if err != nil {
+				return err
+			}
+
+			repos, _, err := client.AllOrgRepos(cmd.Context())
 			if err != nil {
 				return err
 			}
 
 			targetDir, _ := cmd.Flags().GetString("target-dir")
-			return pullAllOrgRepos(cmd.Context(), repos, targetDir, gh.NewGithubCliClient())
+			return pullAllOrgRepos(cmd.Context(), repos, targetDir, ghapi.NewGithubCliClient())
 		},
 	}
 	return cmd
@@ -105,14 +110,14 @@ func NewPullFolderCmd() *cobra.Command {
 				return err
 			}
 
-			githubCliClient := gh.NewGithubCliClient()
+			githubCliClient := ghapi.NewGithubCliClient()
 
 			errgroup, ctx := errgroup.WithContext(ctx)
 			for _, repoDir := range dirs {
 				repoDir := repoDir
 				fullDir := filepath.Join(dir, repoDir)
 				errgroup.Go(func() error {
-					return cliclient.PullRepo(ctx, githubCliClient, repoDir, "", "", fullDir)
+					return ghcli.PullRepo(ctx, githubCliClient, repoDir, "", "", fullDir)
 				})
 			}
 			return errgroup.Wait()
@@ -129,7 +134,12 @@ func NewCloneCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cmd.SilenceUsage = true
 
-			repos, _, err := allOrgRepos(cmd.Context(), args[0])
+			client, err := ghapi.NewGithubClient(cmd.Context(), args[0])
+			if err != nil {
+				return err
+			}
+
+			repos, _, err := client.AllOrgRepos(cmd.Context())
 			if err != nil {
 				return err
 			}
@@ -138,7 +148,7 @@ func NewCloneCmd() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("target-dir flag is required")
 			}
-			return cloneAllOrgRepos(cmd, repos, targetDir, gh.NewGithubCliClient())
+			return cloneAllOrgRepos(cmd, repos, targetDir, ghapi.NewGithubCliClient())
 		},
 	}
 	return cmd
@@ -152,7 +162,13 @@ func NewStatsCmd() *cobra.Command {
 			cmd.SilenceUsage = true
 
 			ownerFlag, _ := cmd.Flags().GetString("owner")
-			repos, _, err := allOrgRepos(cmd.Context(), ownerFlag)
+
+			client, err := ghapi.NewGithubClient(cmd.Context(), ownerFlag)
+			if err != nil {
+				return err
+			}
+
+			repos, _, err := client.AllOrgRepos(cmd.Context())
 			if err != nil {
 				return err
 			}
@@ -161,16 +177,6 @@ func NewStatsCmd() *cobra.Command {
 		},
 	}
 	return cmd
-}
-
-func allOrgRepos(ctx context.Context, owner string) (<-chan *github.Repository, int, error) {
-	client, err := gh.NewGithubClient(ctx, owner)
-	if err != nil {
-		return nil, 0, err
-	}
-	count, repositories, err := client.GetAllRepos(ctx)
-	log.Info("Total org repos:", "count", strconv.Itoa(count))
-	return repositories, count, err
 }
 
 func cloneAllOrgRepos(cmd *cobra.Command, repos <-chan *github.Repository, targetDir string, client *git.Client) error {
@@ -210,7 +216,7 @@ func pullAllOrgRepos(ctx context.Context, repos <-chan *github.Repository, targe
 					log.Debug("Repo is archived, skipping", "repo", *repo.Name)
 					continue
 				}
-				err := cliclient.PullRepo(ctx, client, *repo.Name, *repo.DefaultBranch, *repo.CloneURL, targetDir+"/"+*repo.Name)
+				err := ghcli.PullRepo(ctx, client, *repo.Name, *repo.DefaultBranch, *repo.CloneURL, targetDir+"/"+*repo.Name)
 				if err != nil {
 					return err
 				}

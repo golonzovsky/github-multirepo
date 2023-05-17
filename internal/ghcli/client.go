@@ -1,14 +1,26 @@
-package cliclient
+package ghcli
 
 import (
 	"bytes"
 	"context"
 	"fmt"
+	"os"
+	"os/exec"
 	"strings"
 
 	"github.com/charmbracelet/log"
 	"github.com/cli/cli/v2/git"
 )
+
+func GetGhToken() (string, error) {
+	cmd := exec.Command("gh", "auth", "token")
+	cmd.Env = os.Environ()
+	ghToken, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("please login with gh cli: %v", err)
+	}
+	return strings.TrimSuffix(string(ghToken), "\n"), nil
+}
 
 func PullRepo(ctx context.Context, client *git.Client, repoName string, branch string, url string, targetFolder string) error {
 	log.Info(fmt.Sprintf("Pulling %35s in %s", repoName, targetFolder))

@@ -1,11 +1,13 @@
-package gh
+package ghapi
 
 import (
 	"context"
 	"os"
+	"strconv"
 
 	"github.com/charmbracelet/log"
 	"github.com/cli/cli/v2/git"
+	"github.com/golonzovsky/github-multirepo/internal/ghcli"
 	"github.com/google/go-github/v45/github"
 	"golang.org/x/oauth2"
 	"golang.org/x/sync/errgroup"
@@ -27,7 +29,7 @@ type GithubClient struct {
 }
 
 func NewGithubClient(ctx context.Context, githubOrg string) (*GithubClient, error) {
-	token, err := GetGhToken()
+	token, err := ghcli.GetGhToken()
 	if err != nil {
 		return nil, err
 	}
@@ -89,4 +91,10 @@ func (gc GithubClient) GetAllRepos(ctx context.Context) (int, <-chan *github.Rep
 func (gc GithubClient) Clone(ctx context.Context, url string, targetLocation string) error {
 	_, err := gc.ghCliClient.Clone(ctx, url, []string{targetLocation})
 	return err
+}
+
+func (gc GithubClient) AllOrgRepos(ctx context.Context) (<-chan *github.Repository, int, error) {
+	count, repositories, err := gc.GetAllRepos(ctx)
+	log.Info("Total org repos:", "count", strconv.Itoa(count))
+	return repositories, count, err
 }
