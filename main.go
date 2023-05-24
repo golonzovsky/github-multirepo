@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -16,7 +15,7 @@ import (
 )
 
 var (
-	parallelWorkers = 10
+	targetDir string
 )
 
 func main() {
@@ -42,23 +41,26 @@ func main() {
 
 	if err := NewRootCmd().ExecuteContext(ctx); err != nil {
 		if err != context.Canceled {
-			errLogger.Error(os.Stderr, err)
+			errLogger.Error(err)
 		}
 		os.Exit(1)
 	}
 }
 
 func NewRootCmd() *cobra.Command {
-	var rootCmd = &cobra.Command{Use: "multirepo"}
+	var cmd = &cobra.Command{Use: "multirepo"}
 
-	rootCmd.PersistentFlags().String("owner", "ricardo-ch", "owner of the repo")
-	rootCmd.PersistentFlags().String("target-dir", "", "target for org checkout")
+	cmd.PersistentFlags().String("owner", "ricardo-ch", "owner of the repo")
+	cmd.PersistentFlags().Int("parallel-workers", 10, "number of parallel workers")
 
-	rootCmd.AddCommand(NewPullOrgCmd())
-	rootCmd.AddCommand(NewCloneCmd())
-	rootCmd.AddCommand(NewStatsCmd())
-	rootCmd.AddCommand(NewPullFolderCmd())
-	return rootCmd
+	cmd.PersistentFlags().StringVar(&targetDir, "target-dir", "", "target for org checkout")
+	cmd.MarkFlagRequired("target-dir")
+
+	cmd.AddCommand(NewPullOrgCmd())
+	cmd.AddCommand(NewCloneCmd())
+	cmd.AddCommand(NewStatsCmd())
+	cmd.AddCommand(NewPullFolderCmd())
+	return cmd
 }
 
 func NewPullOrgCmd() *cobra.Command {
@@ -80,9 +82,7 @@ func NewPullOrgCmd() *cobra.Command {
 			}
 
 			targetDir, _ := cmd.Flags().GetString("target-dir")
-			if err != nil || targetDir == "" {
-				return fmt.Errorf("target-dir flag is required")
-			}
+			parallelWorkers, _ := cmd.Flags().GetInt("parallel-workers")
 
 			ghcli := ghcli.NewGithubCliClient()
 			return ghcli.PullAllOrgRepos(cmd.Context(), repos, targetDir, parallelWorkers)
@@ -142,10 +142,8 @@ func NewCloneCmd() *cobra.Command {
 				return err
 			}
 
-			targetDir, err := cmd.Flags().GetString("target-dir")
-			if err != nil || targetDir == "" {
-				return fmt.Errorf("target-dir flag is required")
-			}
+			targetDir, _ := cmd.Flags().GetString("target-dir")
+			parallelWorkers, _ := cmd.Flags().GetInt("parallel-workers")
 
 			ghCli := ghcli.NewGithubCliClient()
 			return ghCli.CloneAllOrgRepos(cmd.Context(), repos, targetDir, parallelWorkers)
