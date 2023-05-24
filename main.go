@@ -14,10 +14,6 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-var (
-	targetDir string
-)
-
 func main() {
 	log.SetLevel(log.DebugLevel)
 	errLogger := log.New(os.Stderr)
@@ -50,11 +46,9 @@ func main() {
 func NewRootCmd() *cobra.Command {
 	var cmd = &cobra.Command{Use: "multirepo"}
 
-	cmd.PersistentFlags().String("owner", "ricardo-ch", "owner of the repo")
 	cmd.PersistentFlags().Int("parallel-workers", 10, "number of parallel workers")
-
-	cmd.PersistentFlags().StringVar(&targetDir, "target-dir", "", "target for org checkout")
-	cmd.MarkFlagRequired("target-dir")
+	cmd.PersistentFlags().String("target-dir", "", "target for org checkout")
+	cmd.MarkPersistentFlagRequired("target-dir")
 
 	cmd.AddCommand(NewPullOrgCmd())
 	cmd.AddCommand(NewCloneCmd())
@@ -126,7 +120,7 @@ func NewPullFolderCmd() *cobra.Command {
 
 func NewCloneCmd() *cobra.Command {
 	var cmd = &cobra.Command{
-		Use:           "clone [github-org]",
+		Use:           "clone [github-owner] --target-dir [dir]",
 		SilenceErrors: true,
 		Args:          cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -154,14 +148,13 @@ func NewCloneCmd() *cobra.Command {
 
 func NewStatsCmd() *cobra.Command {
 	var cmd = &cobra.Command{
-		Use:           "stats",
+		Use:           "stats [github-owner]",
 		SilenceErrors: true,
+		Args:          cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cmd.SilenceUsage = true
 
-			ownerFlag, _ := cmd.Flags().GetString("owner")
-
-			client, err := ghapi.NewGithubClient(cmd.Context(), ownerFlag)
+			client, err := ghapi.NewGithubClient(cmd.Context(), args[0])
 			if err != nil {
 				return err
 			}
