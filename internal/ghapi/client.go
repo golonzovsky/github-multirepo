@@ -2,18 +2,33 @@ package ghapi
 
 import (
 	"context"
-	"os"
+	"sort"
 	"strconv"
 
 	"github.com/charmbracelet/log"
-	"github.com/cli/cli/v2/git"
 	"github.com/golonzovsky/github-multirepo/internal/ghcli"
 	"github.com/google/go-github/v45/github"
 	"golang.org/x/oauth2"
 	"golang.org/x/sync/errgroup"
 )
 
-func InitClient(ctx context.Context, githubAccessToken string) *github.Client {
+type client struct {
+	owner       string
+	ghApiClient *github.Client
+}
+
+func NewGithubClient(ctx context.Context, githubOrg string) (*client, error) {
+	token, err := ghcli.GetGhToken()
+	if err != nil {
+		return nil, err
+	}
+	return &client{
+		owner:       githubOrg,
+		ghApiClient: initClient(ctx, token),
+	}, nil
+}
+
+func initClient(ctx context.Context, githubAccessToken string) *github.Client {
 	ts := oauth2.StaticTokenSource(
 		&oauth2.Token{AccessToken: githubAccessToken},
 	)
@@ -21,34 +36,7 @@ func InitClient(ctx context.Context, githubAccessToken string) *github.Client {
 	return github.NewClient(tc)
 }
 
-type GithubClient struct {
-	owner string
-
-	ghApiClient *github.Client
-	ghCliClient *git.Client
-}
-
-func NewGithubClient(ctx context.Context, githubOrg string) (*GithubClient, error) {
-	token, err := ghcli.GetGhToken()
-	if err != nil {
-		return nil, err
-	}
-	return &GithubClient{
-		owner:       githubOrg,
-		ghApiClient: InitClient(ctx, token),
-		ghCliClient: NewGithubCliClient(),
-	}, nil
-}
-
-func NewGithubCliClient() *git.Client {
-	return &git.Client{
-		Stderr: os.Stderr,
-		Stdin:  os.Stdin,
-		Stdout: os.Stdout,
-	}
-}
-
-func (gc GithubClient) GetAllRepos(ctx context.Context) (int, <-chan *github.Repository, error) {
+func (gc client) GetAllRepos(ctx context.Context) (int, <-chan *github.Repository, error) {
 	org, _, err := gc.ghApiClient.Organizations.Get(ctx, gc.owner)
 	if err != nil {
 		return 0, nil, err
@@ -88,13 +76,27 @@ func (gc GithubClient) GetAllRepos(ctx context.Context) (int, <-chan *github.Rep
 	return totalRepos, repos, nil
 }
 
-func (gc GithubClient) Clone(ctx context.Context, url string, targetLocation string) error {
-	_, err := gc.ghCliClient.Clone(ctx, url, []string{targetLocation})
-	return err
-}
-
-func (gc GithubClient) AllOrgRepos(ctx context.Context) (<-chan *github.Repository, int, error) {
+func (gc client) AllOrgRepos(ctx context.Context) (<-chan *github.Repository, int, error) {
 	count, repositories, err := gc.GetAllRepos(ctx)
 	log.Info("Total org repos:", "count", strconv.Itoa(count))
 	return repositories, count, err
+}
+
+func PrintLanguageStats(repos <-chan *github.Repository) {
+	counts := make(map[string]int)
+	for repo := range repos {
+		if repo.Language == nil {
+			continue
+		}
+		counts[*repo.Language]++
+		log.Info(*repo.Name + " is in " + *repo.Language)
+	}
+	keys := make([]string, 0, len(counts))
+	for key := range counts {
+		keys = append(keys, key)
+	}
+	sort.Slice(keys, func(i, j int) bool { return counts[keys[i]] > counts[keys[j]] })
+	for _, k := range keys {
+		log.Info(k + ":" + strconv.Itoa(counts[k]))
+	}
 }

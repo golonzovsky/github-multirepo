@@ -1,22 +1,16 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"os"
 	"os/signal"
 	"path/filepath"
-	"sort"
-	"strconv"
-	"strings"
 
 	"github.com/charmbracelet/log"
-	"github.com/cli/cli/v2/git"
 	"github.com/golonzovsky/github-multirepo/internal/ghapi"
 	"github.com/golonzovsky/github-multirepo/internal/ghcli"
 	"github.com/golonzovsky/github-multirepo/internal/gitrepo"
-	"github.com/google/go-github/v45/github"
 	"github.com/spf13/cobra"
 	"golang.org/x/sync/errgroup"
 )
@@ -58,7 +52,7 @@ func NewRootCmd() *cobra.Command {
 	var rootCmd = &cobra.Command{Use: "multirepo"}
 
 	rootCmd.PersistentFlags().String("owner", "ricardo-ch", "owner of the repo")
-	rootCmd.PersistentFlags().String("target-dir", "/home/ax/project/ricardo-ch-full-org", "target for org checkout")
+	rootCmd.PersistentFlags().String("target-dir", "", "target for org checkout")
 
 	rootCmd.AddCommand(NewPullOrgCmd())
 	rootCmd.AddCommand(NewCloneCmd())
@@ -67,7 +61,6 @@ func NewRootCmd() *cobra.Command {
 	return rootCmd
 }
 
-// todo this should pull from the current folder and not from the target dir with owner flag
 func NewPullOrgCmd() *cobra.Command {
 	var cmd = &cobra.Command{
 		Use:           "pull-org [owner] --target-dir [dir]",
@@ -87,7 +80,12 @@ func NewPullOrgCmd() *cobra.Command {
 			}
 
 			targetDir, _ := cmd.Flags().GetString("target-dir")
-			return pullAllOrgRepos(cmd.Context(), repos, targetDir, ghapi.NewGithubCliClient())
+			if err != nil || targetDir == "" {
+				return fmt.Errorf("target-dir flag is required")
+			}
+
+			ghcli := ghcli.NewGithubCliClient()
+			return ghcli.PullAllOrgRepos(cmd.Context(), repos, targetDir, parallelWorkers)
 		},
 	}
 	return cmd
@@ -110,14 +108,14 @@ func NewPullFolderCmd() *cobra.Command {
 				return err
 			}
 
-			githubCliClient := ghapi.NewGithubCliClient()
+			ghCliClient := ghcli.NewGithubCliClient()
 
 			errgroup, ctx := errgroup.WithContext(ctx)
 			for _, repoDir := range dirs {
 				repoDir := repoDir
 				fullDir := filepath.Join(dir, repoDir)
 				errgroup.Go(func() error {
-					return ghcli.PullRepo(ctx, githubCliClient, repoDir, "", "", fullDir)
+					return ghCliClient.PullRepo(ctx, repoDir, "", "", fullDir)
 				})
 			}
 			return errgroup.Wait()
@@ -145,10 +143,12 @@ func NewCloneCmd() *cobra.Command {
 			}
 
 			targetDir, err := cmd.Flags().GetString("target-dir")
-			if err != nil {
+			if err != nil || targetDir == "" {
 				return fmt.Errorf("target-dir flag is required")
 			}
-			return cloneAllOrgRepos(cmd, repos, targetDir, ghapi.NewGithubCliClient())
+
+			ghCli := ghcli.NewGithubCliClient()
+			return ghCli.CloneAllOrgRepos(cmd.Context(), repos, targetDir, parallelWorkers)
 		},
 	}
 	return cmd
@@ -172,76 +172,9 @@ func NewStatsCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			printLanguageStats(repos)
+			ghapi.PrintLanguageStats(repos)
 			return nil
 		},
 	}
 	return cmd
-}
-
-func cloneAllOrgRepos(cmd *cobra.Command, repos <-chan *github.Repository, targetDir string, client *git.Client) error {
-	g, _ := errgroup.WithContext(cmd.Context())
-	for i := 0; i < parallelWorkers; i++ {
-		g.Go(func() error {
-			for repo := range repos {
-				targetLoc := targetDir + "/" + *repo.Name
-				log.Info("Cloning", "repo", *repo.Name, "to", targetLoc)
-
-				cmd, err := client.AuthenticatedCommand(cmd.Context(), "clone", *repo.CloneURL, targetLoc)
-				if err != nil {
-					return err
-				}
-				stdErr := &bytes.Buffer{}
-				cmd.Stderr = stdErr
-				if err := cmd.Run(); err != nil {
-					if strings.Contains(stdErr.String(), "already exists and is not an empty directory") {
-						log.Debug("Repo already exists, skipping", "repo", *repo.Name)
-						continue
-					}
-					return err
-				}
-			}
-			return nil
-		})
-	}
-	return g.Wait()
-}
-
-func pullAllOrgRepos(ctx context.Context, repos <-chan *github.Repository, targetDir string, client *git.Client) error {
-	g, _ := errgroup.WithContext(ctx)
-	for i := 0; i < parallelWorkers; i++ {
-		g.Go(func() error {
-			for repo := range repos {
-				if repo.Archived != nil && *repo.Archived {
-					log.Debug("Repo is archived, skipping", "repo", *repo.Name)
-					continue
-				}
-				err := ghcli.PullRepo(ctx, client, *repo.Name, *repo.DefaultBranch, *repo.CloneURL, targetDir+"/"+*repo.Name)
-				if err != nil {
-					return err
-				}
-			}
-			return nil
-		})
-	}
-	return g.Wait()
-}
-
-func printLanguageStats(repos <-chan *github.Repository) {
-	counts := make(map[string]int)
-	for repo := range repos {
-		if repo.Language == nil {
-			continue
-		}
-		counts[*repo.Language]++
-		log.Info(*repo.Name + " is in " + *repo.Language)
-	}
-	keys := make([]string, 0, len(counts))
-	for key := range counts {
-		keys = append(keys, key)
-	}
-	sort.Slice(keys, func(i, j int) bool { return counts[keys[i]] > counts[keys[j]] })
-	for _, k := range keys {
-		log.Info(k + ":" + strconv.Itoa(counts[k]))
-	}
 }
