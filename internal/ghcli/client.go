@@ -10,7 +10,7 @@ import (
 
 	"github.com/charmbracelet/log"
 	"github.com/cli/cli/v2/git"
-	"github.com/google/go-github/v45/github"
+	"github.com/google/go-github/v54/github"
 	"golang.org/x/sync/errgroup"
 )
 

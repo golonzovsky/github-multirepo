@@ -7,7 +7,7 @@ import (
 
 	"github.com/charmbracelet/log"
 	"github.com/golonzovsky/github-multirepo/internal/ghcli"
-	"github.com/google/go-github/v45/github"
+	"github.com/google/go-github/v54/github"
 	"golang.org/x/oauth2"
 	"golang.org/x/sync/errgroup"
 )
