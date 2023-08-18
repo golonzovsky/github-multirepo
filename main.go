@@ -46,7 +46,7 @@ func main() {
 func NewRootCmd() *cobra.Command {
 	var cmd = &cobra.Command{Use: "multirepo"}
 
-	cmd.PersistentFlags().Int("parallel-workers", 10, "number of parallel workers")
+	cmd.PersistentFlags().Int("parallel-workers", 500, "number of parallel workers")
 	cmd.PersistentFlags().String("target-dir", "", "target for org checkout")
 	cmd.MarkPersistentFlagRequired("target-dir")
 
