@@ -43,7 +43,7 @@ func (gc client) GetAllRepos(ctx context.Context) (int, <-chan *github.Repositor
 	}
 
 	const perPage = 50
-	totalRepos := *org.OwnedPrivateRepos + *org.PublicRepos
+	totalRepos := int(*org.OwnedPrivateRepos) + *org.PublicRepos
 	numPages := (totalRepos + perPage - 1) / perPage
 	repos := make(chan *github.Repository)
 	g, _ := errgroup.WithContext(ctx)
