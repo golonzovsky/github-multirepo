@@ -87,10 +87,10 @@ func (c Client) CloneAllOrgRepos(ctx context.Context, repos <-chan *github.Repos
 					if strings.Contains(stdErr.String(), "already exists and is not an empty directory") {
 						log.Debug("Repo already exists, skipping", "repo", *repo.Name)
 						continue
-					} else {
-						log.Info("Cloning", "repo", *repo.Name, "to", targetLoc)
 					}
 					return err
+				} else {
+					log.Info("Cloning", "repo", *repo.Name, "to", targetLoc)
 				}
 			}
 			return nil
